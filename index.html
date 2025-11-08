@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TOTP</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+<style>
+body{font-family:Roboto,sans-serif;font-size:20px;background:#f9f9f9;height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+label{font-size:20px}
+input{padding:10px;font-family:monospace;font-size:20px;width:256px;margin-top:8px;border:2px solid #ccc;border-radius:8px}
+#code{font-weight:bold;letter-spacing:2px;text-align:center;background:#eef;cursor:pointer}
+</style>
+</head>
+<body>
+<div>
+  <label>Key (Base32):</label><br>
+  <input id="secret" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"><br><br>
+  <label>TOTP Code (click to copy):</label><br>
+  <input id="code" readonly>
+</div>
+<script>
+const base32=s=>{
+  if(!s)return new Uint8Array();
+  const a='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  s=s.toUpperCase().replace(/[^A-Z2-7]/g,'');
+  let bits=0,v=0,out=[];
+  for(const c of s){v=(v<<5)|a.indexOf(c);bits+=5;if(bits>=8){bits-=8;out.push((v>>bits)&255);}}
+  return new Uint8Array(out);
+};
+async function hotp(secret,c){
+  const key=await crypto.subtle.importKey('raw',secret,{name:'HMAC',hash:'SHA-1'},!1,['sign']);
+  const buf=new ArrayBuffer(8),view=new DataView(buf);
+  for(let i=7;i>=0;i--){view.setUint8(i,Number(c&255n));c>>=8n;}
+  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',key,buf)),o=sig.at(-1)&15;
+  const n=((sig[o]&127)<<24)|(sig[o+1]<<16)|(sig[o+2]<<8)|sig[o+3];
+  return String(n%1e6).padStart(6,'0');
+}
+const sEl=document.getElementById('secret'),cEl=document.getElementById('code');
+let last;
+async function upd(){
+  const s=sEl.value.trim();
+  if(!s)return cEl.value='-';
+  const bytes=base32(s),ctr=BigInt(Math.floor(Date.now()/3e4));
+  if(ctr!==last){cEl.value=await hotp(bytes,ctr);last=ctr;}
+}
+setInterval(upd,1e3);upd();
+cEl.onclick=()=>navigator.clipboard.writeText(cEl.value).catch(()=>{});
+sEl.oninput=()=>{last=null;upd();};
+sEl.onfocus=()=>sEl.select();
+cEl.onfocus=()=>cEl.select();
+</script>
+</body>
+</html>
