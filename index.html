@@ -8,16 +8,17 @@
 <style>
 body{font-family:Roboto,sans-serif;font-size:20px;background:#f9f9f9;height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
 label{font-size:20px}
-input{padding:10px;font-family:monospace;font-size:20px;width:256px;margin-top:8px;border:2px solid #ccc;border-radius:8px}
-#code{font-weight:bold;letter-spacing:2px;text-align:center;background:#eef;cursor:pointer}
+input{font-family:monospace;font-size:16px;margin-top:8px;border:2px solid #ccc;border-radius:8px}
+textarea#secret{padding:12px;font-family:monospace;font-size:16px;width:256px;height:80px;margin-top:8px;border:2px solid #ccc;border-radius:8px;resize:vertical;text-align:left;box-sizing:border-box}
+#code{padding:12px;font-weight:bold;letter-spacing:2px;text-align:center;background:#eef;cursor:pointer}
 #timer{margin-top:6px;font-size:16px;color:#666}
 </style>
 </head>
 <body>
 <div>
   <label>Key (Base32):</label><br>
-  <input id="secret" placeholder="Leave blank for default key" autocomplete="off"><br><br>
-  <label>Code (click to copy):</label><br>
+  <textarea id="secret" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"></textarea><br><br>
+  <label>TOTP Code (click to copy):</label><br>
   <div id="timer">Next refresh in 30s</div>
   <input id="code" readonly>
 </div>
