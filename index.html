@@ -10,13 +10,15 @@ body{font-family:Roboto,sans-serif;font-size:20px;background:#f9f9f9;height:100d
 label{font-size:20px}
 input{padding:10px;font-family:monospace;font-size:20px;width:256px;margin-top:8px;border:2px solid #ccc;border-radius:8px}
 #code{font-weight:bold;letter-spacing:2px;text-align:center;background:#eef;cursor:pointer}
+#timer{margin-top:6px;font-size:16px;color:#666}
 </style>
 </head>
 <body>
 <div>
   <label>Key (Base32):</label><br>
-  <input id="secret" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"><br><br>
-  <label>TOTP Code (click to copy):</label><br>
+  <input id="secret" placeholder="Leave blank for default key" autocomplete="off"><br><br>
+  <label>Code (click to copy):</label><br>
+  <div id="timer">Next refresh in 30s</div>
   <input id="code" readonly>
 </div>
 <script>
@@ -36,15 +38,27 @@ async function hotp(secret,c){
   const n=((sig[o]&127)<<24)|(sig[o+1]<<16)|(sig[o+2]<<8)|sig[o+3];
   return String(n%1e6).padStart(6,'0');
 }
-const sEl=document.getElementById('secret'),cEl=document.getElementById('code');
+
+const sEl=document.getElementById('secret'),
+      cEl=document.getElementById('code'),
+      tEl=document.getElementById('timer');
+
 let last;
 async function upd(){
-  const s=sEl.value.trim();
-  if(!s)return cEl.value='-';
-  const bytes=base32(s),ctr=BigInt(Math.floor(Date.now()/3e4));
+  const now=Date.now();
+  const ctr=BigInt(Math.floor(now/3e4));
+  const remain=30-Math.floor((now/1e3)%30);
+  tEl.textContent=`Next refresh in ${remain}s`;
+  
+  let s=sEl.value.trim();
+  if(!s) s='12345';
+  const bytes=base32(s);
+
   if(ctr!==last){cEl.value=await hotp(bytes,ctr);last=ctr;}
 }
-setInterval(upd,1e3);upd();
+
+setInterval(upd,1000);upd();
+
 cEl.onclick=()=>navigator.clipboard.writeText(cEl.value).catch(()=>{});
 sEl.oninput=()=>{last=null;upd();};
 sEl.onfocus=()=>sEl.select();
