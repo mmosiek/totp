@@ -52,7 +52,7 @@ async function upd(){
   tEl.textContent=`Next refresh in ${remain}s`;
   
   let s=sEl.value.trim();
-  if(!s) s='12345';
+  if(!s) s='JBSWY3DPEHPK3PXP';
   const bytes=base32(s);
 
   if(ctr!==last){cEl.value=await hotp(bytes,ctr);last=ctr;}
@@ -67,3 +67,4 @@ cEl.onfocus=()=>cEl.select();
 </script>
 </body>
 </html>
+
