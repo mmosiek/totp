@@ -1,68 +1,87 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TOTP</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
-<style>
-body{font-family:Roboto,sans-serif;font-size:20px;background:#121212;color:#f1f1f1;height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
-label{font-size:20px;font-weight: bold;}
-input,textarea#secret{background:#1e1e1e;border:2px solid #444;color:#f1f1f1;border-radius:8px;font-family:monospace;font-size:16px;margin-top:8px;resize:vertical;padding:12px;box-sizing:border-box;width:256px;height:80px}
-#code{padding:12px;font-weight:bold;letter-spacing:2px;text-align:center;background:#2a2a4a;color:#fff;cursor:pointer}
-#timer{margin-top:6px;font-size:16px;color:#aaa}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TOTP</title>
+  <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
 </head>
-<body>
-<div>
-  <label>Key (Base32):</label><br>
-  <textarea id="secret" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"></textarea><br><br>
-  <label>TOTP Code (click to copy):</label><br>
-  <div id="timer">Next refresh in 30s</div>
-  <input id="code" readonly>
-</div>
-<script>
-const base32=s=>{
-  if(!s)return new Uint8Array();
-  const a='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  s=s.toUpperCase().replace(/[^A-Z2-7]/g,'');
-  let bits=0,v=0,out=[];
-  for(const c of s){v=(v<<5)|a.indexOf(c);bits+=5;if(bits>=8){bits-=8;out.push((v>>bits)&255);}}
-  return new Uint8Array(out);
-};
-async function hotp(secret,c){
-  const key=await crypto.subtle.importKey('raw',secret,{name:'HMAC',hash:'SHA-1'},!1,['sign']);
-  const buf=new ArrayBuffer(8),view=new DataView(buf);
-  for(let i=7;i>=0;i--){view.setUint8(i,Number(c&255n));c>>=8n;}
-  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',key,buf)),o=sig.at(-1)&15;
-  const n=((sig[o]&127)<<24)|(sig[o+1]<<16)|(sig[o+2]<<8)|sig[o+3];
-  return String(n%1e6).padStart(6,'0');
-}
+<body style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;height:100dvh;margin:0;">
+  <main style="width:320px;">
+    <h2 style="text-align:center;margin-bottom:15px;">TOTP Generator</h2>
 
-const sEl=document.getElementById('secret'),
-      cEl=document.getElementById('code'),
-      tEl=document.getElementById('timer');
+    <fieldset style="margin:5px 0;text-align:left;">
+      <legend>Key (Base32)</legend>
+      <textarea id="secret" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"
+        style="font-family:monospace;resize:vertical;height:100px;font-size:18px;padding:6px;"></textarea>
+    </fieldset>
 
-let last;
-async function upd(){
-  const now=Date.now();
-  const ctr=BigInt(Math.floor(now/3e4));
-  const remain=30-Math.floor((now/1e3)%30);
-  tEl.textContent=`Next refresh in ${remain}s`;
-  
-  let s=sEl.value.trim();
-  if(!s) s='JBSWY3DPEHPK3PXP';
-  const bytes=base32(s);
+    <fieldset style="margin:5px 0;text-align:left;">
+      <legend>Code</legend>
+      <input id="code" readonly
+        style="font-family:monospace;font-weight:bold;letter-spacing:2px;text-align:center;cursor:pointer;font-size:32px;padding:10px;">
+      <div id="timer" style="text-align:center;color:#aaa;font-size:16px;">Next refresh in 30s</div>
+    </fieldset>
+  </main>
 
-  if(ctr!==last){cEl.value=await hotp(bytes,ctr);last=ctr;}
-}
+  <script>
+    const base32 = s => {
+      if (!s) return new Uint8Array();
+      const a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+      s = s.toUpperCase().replace(/[^A-Z2-7]/g, '');
+      let bits = 0, v = 0, out = [];
+      for (const c of s) {
+        v = (v << 5) | a.indexOf(c);
+        bits += 5;
+        if (bits >= 8) {
+          bits -= 8;
+          out.push((v >> bits) & 255);
+        }
+      }
+      return new Uint8Array(out);
+    };
 
-setInterval(upd,1000);upd();
+    async function hotp(secret, c) {
+      const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+      const buf = new ArrayBuffer(8), view = new DataView(buf);
+      for (let i = 7; i >= 0; i--) {
+        view.setUint8(i, Number(c & 255n));
+        c >>= 8n;
+      }
+      const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
+      const o = sig.at(-1) & 15;
+      const n = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3];
+      return String(n % 1e6).padStart(6, '0');
+    }
 
-cEl.onclick=()=>navigator.clipboard.writeText(cEl.value).catch(()=>{});
-sEl.oninput=()=>{last=null;upd();};
-sEl.onfocus=()=>sEl.select();
-cEl.onfocus=()=>cEl.select();
-</script>
+    const sEl = document.getElementById('secret'),
+          cEl = document.getElementById('code'),
+          tEl = document.getElementById('timer');
+
+    let last;
+    async function upd() {
+      const now = Date.now();
+      const ctr = BigInt(Math.floor(now / 3e4));
+      const remain = 30 - Math.floor((now / 1e3) % 30);
+      tEl.textContent = `Next refresh in ${remain}s`;
+
+      let s = sEl.value.trim();
+      if (!s) s = 'JBSWY3DPEHPK3PXP';
+      const bytes = base32(s);
+
+      if (ctr !== last) {
+        cEl.value = await hotp(bytes, ctr);
+        last = ctr;
+      }
+    }
+
+    setInterval(upd, 1000);
+    upd();
+
+    cEl.onclick = () => navigator.clipboard.writeText(cEl.value).catch(() => {});
+    sEl.oninput = () => { last = null; upd(); };
+    sEl.onfocus = () => sEl.select();
+    cEl.onfocus = () => cEl.select();
+  </script>
 </body>
 </html>
