@@ -11,9 +11,13 @@
     <h2 style="text-align:center;margin-bottom:15px;">TOTP Generator</h2>
 
     <fieldset style="margin:5px 0;text-align:left;">
-      <legend>Key (Base32)</legend>
-      <textarea id="secret" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"
-        style="font-family:monospace;resize:vertical;height:100px;min-height:41px;max-height:256px;min-width:200px;font-size:18px;padding:6px;"></textarea>
+      <legend>Secret Key</legend>
+      <input id="secret" type="password" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"
+        style="font-family:monospace;width:100%;font-size:18px;padding:6px;">
+      <label style="display:flex;align-items:center;font-size: 0.85rem;" for="show-secret">
+        <input id="show-secret" type="checkbox" role="switch">
+        Show secret key
+      </label>
     </fieldset>
 
     <fieldset style="margin:5px 0;text-align:left;">
@@ -64,9 +68,14 @@
     }
 
     const sEl = document.getElementById('secret'),
+          showEl = document.getElementById('show-secret'),
           cEl = document.getElementById('code'),
           tEl = document.getElementById('timer'),
           validHelper = document.getElementById('valid-helper');
+
+    showEl.onchange = () => {
+      sEl.type = showEl.checked ? 'text' : 'password';
+    };
 
     let last, progressEl;
 
