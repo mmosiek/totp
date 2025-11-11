@@ -20,15 +20,17 @@
       <legend>Code</legend>
       <input id="code" readonly
         style="font-family:monospace;font-weight:bold;letter-spacing:2px;text-align:center;cursor:pointer;font-size:32px;padding:10px;">
+      <small id="valid-helper" hidden>Copied!</small>
       <div id="timer" style="text-align:center;color:#aaa;font-size:16px;">Next refresh in 30s</div>
     </fieldset>
-  <footer class="container" style="padding:0.5rem;text-align:center;font-size:0.9rem;">
-    <p>
-      <small>
-        Made by <a href="https://github.com/mmosiek" class="secondary" target="_blank">mmosiek</a>, Source on <a href="https://github.com/mmosiek/totp" class="secondary" target="_blank">GitHub</a>.
-      </small>
-    </p>
-  </footer>
+
+    <footer class="container" style="padding:0.5rem;text-align:center;font-size:0.9rem;">
+      <p>
+        <small>
+          Made by <a href="https://github.com/mmosiek" class="secondary" target="_blank">mmosiek</a>, Source on <a href="https://github.com/mmosiek/totp" class="secondary" target="_blank">GitHub</a>.
+        </small>
+      </p>
+    </footer>
   </main>
 
   <script>
@@ -63,14 +65,30 @@
 
     const sEl = document.getElementById('secret'),
           cEl = document.getElementById('code'),
-          tEl = document.getElementById('timer');
+          tEl = document.getElementById('timer'),
+          validHelper = document.getElementById('valid-helper');
 
-    let last;
+    let last, progressEl;
+
     async function upd() {
       const now = Date.now();
       const ctr = BigInt(Math.floor(now / 3e4));
       const remain = 30 - Math.floor((now / 1e3) % 30);
+      const percent = Math.floor((remain / 30) * 100);
       tEl.textContent = `Next refresh in ${remain}s`;
+
+      if (!progressEl) {
+        progressEl = document.createElement("progress");
+        progressEl.max = 100;
+        progressEl.style.width = "100%";
+        tEl.insertAdjacentElement("afterend", progressEl);
+      }
+      progressEl.value = percent;
+
+      if (percent <= 0) {
+        progressEl.remove();
+        progressEl = null;
+      }
 
       let s = sEl.value.trim();
       if (!s) s = 'JBSWY3DPEHPK3PXP';
@@ -85,15 +103,19 @@
     setInterval(upd, 1000);
     upd();
 
-    cEl.onclick = () => navigator.clipboard.writeText(cEl.value).catch(() => {});
+    cEl.onclick = () => {
+      navigator.clipboard.writeText(cEl.value).catch(() => {});
+      cEl.setAttribute('aria-describedby', 'valid-helper');
+      validHelper.hidden = false;
+      setTimeout(() => {
+        cEl.removeAttribute('aria-describedby');
+        validHelper.hidden = true;
+      }, 1000);
+    };
+
     sEl.oninput = () => { last = null; upd(); };
     sEl.onfocus = () => sEl.select();
     cEl.onfocus = () => cEl.select();
   </script>
 </body>
 </html>
-
-
-
-
-
