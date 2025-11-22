@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>TOTP Lite</title>
+  <title>TOTP</title>
   <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <style>
@@ -15,7 +15,7 @@
   <main class="container">
     <hgroup>
       <h2>TOTP Generator</h2>
-      <p>Lite Version (Low Memory)</p>
+      <p>Two-Factor Authentication Code Generator</p>
     </hgroup>
 
     <div class="grid">
@@ -62,10 +62,15 @@
         </article>
 
         <article style="flex:1;">
-          <header><strong>Info</strong></header>
+          <header><strong>What is TOTP?</strong></header>
           <p style="font-size:0.9rem;">
-            <strong>TOTP</strong> generates a 6-digit code changing every 30s.
-            This version is optimized for older devices.
+            <strong>Time-based One-Time Password</strong> is a two-factor authentication method. 
+            It generates a 6-digit code that changes every 30 seconds.
+          </p>
+          <p style="font-size:0.9rem;">
+            <strong>How does it work?</strong><br>
+            Your secret key + current time = unique code. The same algorithm runs on your device 
+            and the server, so both generate the same code at the same time.
           </p>
         </article>
       </div>
@@ -73,12 +78,14 @@
 
     <footer style="text-align:center;">
       <small>
-        Made by <a href="https://github.com/mmosiek" class="secondary">mmosiek</a>
+        Made by <a href="https://github.com/mmosiek" class="secondary">mmosiek</a> · 
+        <a href="https://github.com/mmosiek/totp" class="secondary">GitHub</a>
       </small>
     </footer>
   </main>
 
   <script>
+    // --- TOTP Logic ---
     const base32 = s => {
       if (!s) return new Uint8Array();
       const a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -95,17 +102,13 @@
     };
     
     async function hotp(secret, c) {
-      try {
-        const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-        const buf = new ArrayBuffer(8), view = new DataView(buf);
-        for (let i = 7; i >= 0; i--) view.setUint8(i, Number((c >> BigInt(8 * (7 - i))) & 255n));
-        const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
-        const o = sig.at(-1) & 15;
-        const n = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3];
-        return String(n % 1e6).padStart(6, '0');
-      } catch (e) {
-        return "ERROR";
-      }
+      const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+      const buf = new ArrayBuffer(8), view = new DataView(buf);
+      for (let i = 7; i >= 0; i--) view.setUint8(i, Number((c >> BigInt(8 * (7 - i))) & 255n));
+      const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
+      const o = sig.at(-1) & 15;
+      const n = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3];
+      return String(n % 1e6).padStart(6, '0');
     }
     
     const $ = id => document.getElementById(id);
@@ -125,7 +128,11 @@
       
       const s = sEl.value.trim() || 'JBSWY3DPEHPK3PXP';
       if (ctr !== last) {
-        cEl.value = await hotp(base32(s), ctr);
+        try {
+            cEl.value = await hotp(base32(s), ctr);
+        } catch(e) {
+            cEl.value = "ERROR";
+        }
         last = ctr;
       }
     }
@@ -148,18 +155,18 @@
         const secret = new URL(code).searchParams.get('secret');
         if (secret) {
           sEl.value = secret;
-          qrStatus.innerHTML = '<mark>✓ Key extracted!</mark>';
+          qrStatus.innerHTML = '<mark>✓ Secret key extracted!</mark>';
           last = null;
           upd();
-          setTimeout(() => qrStatus.textContent = 'Paste QR with Ctrl+V', 3000);
-        } else qrStatus.innerHTML = '<mark>✗ Invalid QR</mark>';
+          setTimeout(() => qrStatus.textContent = 'Press Ctrl+V to paste QR code', 3000);
+        } else qrStatus.innerHTML = '<mark>✗ Invalid QR code</mark>';
       } catch {
-        qrStatus.innerHTML = '<mark>✗ Invalid QR</mark>';
+        qrStatus.innerHTML = '<mark>✗ Invalid QR code</mark>';
       }
     }
     
     function scanImage(img) {
-      const MAX_DIMENSION = 350; 
+      const MAX_DIMENSION = 150; 
       
       let width = img.width;
       let height = img.height;
@@ -183,15 +190,10 @@
       try {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, canvas.width, canvas.height);
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        canvas.width = 1; 
-        canvas.height = 1;
-
-        code ? processQR(code.data) : (qrStatus.innerHTML = '<mark>✗ No QR found</mark>');
+        code ? processQR(code.data) : (qrStatus.innerHTML = '<mark>✗ No QR code found</mark>');
       } catch (e) {
         console.error(e);
-        qrStatus.innerHTML = '<mark>⚠ Memory Error</mark>';
+        qrStatus.innerHTML = '<mark>⚠ Memory Error (Try smaller image)</mark>';
       }
     }
     
@@ -199,22 +201,15 @@
       const file = e.target.files[0];
       if (!file) return;
       qrStatus.textContent = 'Processing...';
-      
       const img = new Image();
-      const url = URL.createObjectURL(file);
       
       img.onload = () => { 
         scanImage(img); 
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(img.src);
         e.target.value = ''; 
       };
       
-      img.onerror = () => {
-        qrStatus.innerHTML = '<mark>⚠ Image Error</mark>';
-        URL.revokeObjectURL(url);
-      };
-      
-      img.src = url;
+      img.src = URL.createObjectURL(file);
     }
 
     $('qr-upload').onchange = handleFile;
@@ -226,11 +221,13 @@
           e.preventDefault();
           const file = item.getAsFile();
           if (!file) continue;
-          qrStatus.textContent = 'Processing pasted...';
+          qrStatus.textContent = 'Processing pasted image...';
           const img = new Image();
-          const url = URL.createObjectURL(file);
-          img.onload = () => { scanImage(img); URL.revokeObjectURL(url); };
-          img.src = url;
+          img.onload = () => {
+             scanImage(img);
+             URL.revokeObjectURL(img.src);
+          };
+          img.src = URL.createObjectURL(file);
           break;
         }
       }
