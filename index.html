@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>TOTP</title>
+  <title>TOTP Lite</title>
   <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <style>
@@ -15,7 +15,7 @@
   <main class="container">
     <hgroup>
       <h2>TOTP Generator</h2>
-      <p>Two-Factor Authentication Code Generator</p>
+      <p>Lite Version (Low Memory)</p>
     </hgroup>
 
     <div class="grid">
@@ -62,15 +62,10 @@
         </article>
 
         <article style="flex:1;">
-          <header><strong>What is TOTP?</strong></header>
+          <header><strong>Info</strong></header>
           <p style="font-size:0.9rem;">
-            <strong>Time-based One-Time Password</strong> is a two-factor authentication method. 
-            It generates a 6-digit code that changes every 30 seconds.
-          </p>
-          <p style="font-size:0.9rem;">
-            <strong>How does it work?</strong><br>
-            Your secret key + current time = unique code. The same algorithm runs on your device 
-            and the server, so both generate the same code at the same time.
+            <strong>TOTP</strong> generates a 6-digit code changing every 30s.
+            This version is optimized for older devices.
           </p>
         </article>
       </div>
@@ -78,8 +73,7 @@
 
     <footer style="text-align:center;">
       <small>
-        Made by <a href="https://github.com/mmosiek" class="secondary">mmosiek</a> · 
-        <a href="https://github.com/mmosiek/totp" class="secondary">GitHub</a>
+        Made by <a href="https://github.com/mmosiek" class="secondary">mmosiek</a>
       </small>
     </footer>
   </main>
@@ -101,18 +95,23 @@
     };
     
     async function hotp(secret, c) {
-      const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-      const buf = new ArrayBuffer(8), view = new DataView(buf);
-      for (let i = 7; i >= 0; i--) view.setUint8(i, Number((c >> BigInt(8 * (7 - i))) & 255n));
-      const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
-      const o = sig.at(-1) & 15;
-      const n = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3];
-      return String(n % 1e6).padStart(6, '0');
+      try {
+        const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+        const buf = new ArrayBuffer(8), view = new DataView(buf);
+        for (let i = 7; i >= 0; i--) view.setUint8(i, Number((c >> BigInt(8 * (7 - i))) & 255n));
+        const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
+        const o = sig.at(-1) & 15;
+        const n = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3];
+        return String(n % 1e6).padStart(6, '0');
+      } catch (e) {
+        return "ERROR";
+      }
     }
     
     const $ = id => document.getElementById(id);
     const sEl = $('secret'), cEl = $('code'), tEl = $('timer'), progressEl = $('progress');
     const validHelper = $('valid-helper'), qrStatus = $('qr-status');
+    const canvas = $('canvas');
     
     $('show-secret').onchange = e => sEl.type = e.target.checked ? 'text' : 'password';
     
@@ -143,93 +142,83 @@
     sEl.oninput = () => { last = null; upd(); };
     sEl.onfocus = () => sEl.select();
     cEl.onfocus = () => cEl.select();
-    
+
     function processQR(code) {
       try {
         const secret = new URL(code).searchParams.get('secret');
         if (secret) {
           sEl.value = secret;
-          qrStatus.innerHTML = '<mark>✓ Secret key extracted!</mark>';
+          qrStatus.innerHTML = '<mark>✓ Key extracted!</mark>';
           last = null;
           upd();
-          setTimeout(() => qrStatus.textContent = 'Press Ctrl+V to paste QR code', 3000);
-        } else qrStatus.innerHTML = '<mark>✗ Invalid QR code</mark>';
+          setTimeout(() => qrStatus.textContent = 'Paste QR with Ctrl+V', 3000);
+        } else qrStatus.innerHTML = '<mark>✗ Invalid QR</mark>';
       } catch {
-        qrStatus.innerHTML = '<mark>✗ Invalid QR code</mark>';
+        qrStatus.innerHTML = '<mark>✗ Invalid QR</mark>';
       }
     }
     
     function scanImage(img) {
-      const maxSize = 400;
+      const MAX_DIMENSION = 350; 
+      
       let width = img.width;
       let height = img.height;
-      
-      if (width > maxSize || height > maxSize) {
+
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
         if (width > height) {
-          height = (height / width) * maxSize;
-          width = maxSize;
+          height = Math.round(height * (MAX_DIMENSION / width));
+          width = MAX_DIMENSION;
         } else {
-          width = (width / height) * maxSize;
-          height = maxSize;
+          width = Math.round(width * (MAX_DIMENSION / height));
+          height = MAX_DIMENSION;
         }
       }
-      
+
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
+      
       ctx.drawImage(img, 0, 0, width, height);
-      const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-      code ? processQR(code.data) : (qrStatus.innerHTML = '<mark>✗ No QR code found</mark>');
+      
+      try {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, canvas.width, canvas.height);
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 1; 
+        canvas.height = 1;
+
+        code ? processQR(code.data) : (qrStatus.innerHTML = '<mark>✗ No QR found</mark>');
+      } catch (e) {
+        console.error(e);
+        qrStatus.innerHTML = '<mark>⚠ Memory Error</mark>';
+      }
     }
     
-    function processFile(file, input) {
+    function handleFile(e) {
+      const file = e.target.files[0];
       if (!file) return;
       qrStatus.textContent = 'Processing...';
       
-      const reader = new FileReader();
-      reader.onload = e => {
-        const img = new Image();
-        img.onload = () => {
-          const tempCanvas = document.createElement('canvas');
-          const maxSize = 300;
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > maxSize || height > maxSize) {
-            if (width > height) {
-              height = (height / width) * maxSize;
-              width = maxSize;
-            } else {
-              width = (width / height) * maxSize;
-              height = maxSize;
-            }
-          }
-          
-          tempCanvas.width = width;
-          tempCanvas.height = height;
-          const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-          tempCtx.drawImage(img, 0, 0, width, height);
-          
-          const imageData = tempCtx.getImageData(0, 0, width, height);
-          const code = jsQR(imageData.data, width, height);
-          
-          if (code) {
-            processQR(code.data);
-          } else {
-            qrStatus.innerHTML = '<mark>✗ No QR code found</mark>';
-          }
-          
-          tempCanvas.width = 0;
-          tempCanvas.height = 0;
-          if (input) input.value = '';
-        };
-        img.src = e.target.result;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      
+      img.onload = () => { 
+        scanImage(img); 
+        URL.revokeObjectURL(url);
+        e.target.value = ''; 
       };
-      reader.readAsDataURL(file);
+      
+      img.onerror = () => {
+        qrStatus.innerHTML = '<mark>⚠ Image Error</mark>';
+        URL.revokeObjectURL(url);
+      };
+      
+      img.src = url;
     }
-    
-    $('qr-upload').onchange = e => processFile(e.target.files[0], e.target);
-    $('qr-camera').onchange = e => processFile(e.target.files[0], e.target);
+
+    $('qr-upload').onchange = handleFile;
+    $('qr-camera').onchange = handleFile;
     
     document.addEventListener('paste', e => {
       for (const item of e.clipboardData?.items || []) {
@@ -237,7 +226,11 @@
           e.preventDefault();
           const file = item.getAsFile();
           if (!file) continue;
-          processFile(file);
+          qrStatus.textContent = 'Processing pasted...';
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+          img.onload = () => { scanImage(img); URL.revokeObjectURL(url); };
+          img.src = url;
           break;
         }
       }
