@@ -5,35 +5,82 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>TOTP</title>
   <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <style>
+    #qr-upload { display: none; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+  </style>
 </head>
-<body style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;height:100dvh;margin:0;">
-  <main style="width:320px;">
-    <h2 style="text-align:center;margin-bottom:15px;">TOTP Generator</h2>
+<body>
+  <main class="container">
+    <hgroup>
+      <h2>TOTP Generator</h2>
+      <p>Two-Factor Authentication Code Generator</p>
+    </hgroup>
 
-    <fieldset style="margin:5px 0;text-align:left;">
-      <legend>Secret Key</legend>
-      <input id="secret" type="password" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off"
-        style="font-family:monospace;width:100%;font-size:18px;padding:6px;">
-      <label style="display:flex;align-items:center;font-size: 0.85rem;" for="show-secret">
-        <input id="show-secret" type="checkbox" role="switch">
-        Show secret key
-      </label>
-    </fieldset>
+    <div class="grid">
+      <div style="display:flex;flex-direction:column;">
+        <article style="flex:1;">
+          <header><strong>Secret Key</strong></header>
+          <input id="secret" type="password" placeholder="e.g. JBSWY3DPEHPK3PXP" autocomplete="off">
+          <label>
+            <input id="show-secret" type="checkbox" role="switch">
+            Show secret key
+          </label>
+        </article>
 
-    <fieldset style="margin:5px 0;text-align:left;">
-      <legend>Code</legend>
-      <input id="code" readonly
-        style="font-family:monospace;font-weight:bold;letter-spacing:2px;text-align:center;cursor:pointer;font-size:32px;padding:10px;">
-      <small id="valid-helper" hidden>Copied!</small>
-      <div id="timer" style="text-align:center;color:#aaa;font-size:16px;">Next refresh in 30s</div>
-    </fieldset>
+        <article style="flex:1;">
+          <header><strong>Generated Code</strong></header>
+          <input id="code" readonly style="text-align:center;font-size:2.2rem;font-weight:bold;letter-spacing:0.5rem;cursor:pointer;font-family: monospace;">
+          <small id="valid-helper" style="display:none;text-align:center;color:#4caf50;">✓ Copied!</small>
+          <progress id="progress" max="100" value="100"></progress>
+          <footer>
+            <small id="timer" style="display:block;text-align:center;">Next refresh in 30s</small>
+          </footer>
+        </article>
+      </div>
 
-    <footer class="container" style="padding:0.5rem;text-align:center;font-size:0.9rem;">
-      <p>
-        <small>
-          Made by <a href="https://github.com/mmosiek" class="secondary" target="_blank">mmosiek</a>, Source on <a href="https://github.com/mmosiek/totp" class="secondary" target="_blank">GitHub</a>.
-        </small>
-      </p>
+      <div style="display:flex;flex-direction:column;">
+        <article style="flex:1;">
+          <header><strong>Scan QR Code</strong></header>
+          
+          <div class="grid grid-2">
+            <label for="qr-upload" role="button" class="secondary" style="margin-bottom:0;">
+              📤 Upload QR
+            </label>
+            <button id="camera-btn">📷 Camera</button>
+          </div>
+          <input id="qr-upload" type="file" accept="image/*">
+          
+          <button id="stop-camera-btn" class="secondary" style="display:none;">⏹ Stop Camera</button>
+          
+          <video id="video" width="100%" style="display:none;" playsinline></video>
+          <canvas id="canvas" hidden></canvas>
+          <footer>
+            <small id="qr-status" style="display:block;text-align:center;min-height:1.5rem;">Press Ctrl+V to paste QR code</small>
+          </footer>
+        </article>
+
+        <article style="flex:1;">
+          <header><strong>What is TOTP?</strong></header>
+          <p style="font-size:0.9rem;">
+            <strong>Time-based One-Time Password</strong> is a two-factor authentication method. 
+            It generates a 6-digit code that changes every 30 seconds.
+          </p>
+          <p style="font-size:0.9rem;">
+            <strong>How does it work?</strong><br>
+            Your secret key + current time = unique code. The same algorithm runs on your device 
+            and the server, so both generate the same code at the same time.
+          </p>
+        </article>
+      </div>
+    </div>
+
+    <footer style="text-align:center;">
+      <small>
+        Made by <a href="https://github.com/mmosiek" class="secondary">mmosiek</a> · 
+        <a href="https://github.com/mmosiek/totp" class="secondary">GitHub</a>
+      </small>
     </footer>
   </main>
 
@@ -47,84 +94,148 @@
         v = (v << 5) | a.indexOf(c);
         bits += 5;
         if (bits >= 8) {
-          bits -= 8;
-          out.push((v >> bits) & 255);
+          out.push((v >> (bits -= 8)) & 255);
         }
       }
       return new Uint8Array(out);
     };
-
+    
     async function hotp(secret, c) {
       const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
       const buf = new ArrayBuffer(8), view = new DataView(buf);
-      for (let i = 7; i >= 0; i--) {
-        view.setUint8(i, Number(c & 255n));
-        c >>= 8n;
-      }
+      for (let i = 7; i >= 0; i--) view.setUint8(i, Number((c >> BigInt(8 * (7 - i))) & 255n));
       const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
       const o = sig.at(-1) & 15;
       const n = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3];
       return String(n % 1e6).padStart(6, '0');
     }
-
-    const sEl = document.getElementById('secret'),
-          showEl = document.getElementById('show-secret'),
-          cEl = document.getElementById('code'),
-          tEl = document.getElementById('timer'),
-          validHelper = document.getElementById('valid-helper');
-
-    showEl.onchange = () => {
-      sEl.type = showEl.checked ? 'text' : 'password';
-    };
-
-    let last, progressEl;
-
+    
+    const $ = id => document.getElementById(id);
+    const sEl = $('secret'), cEl = $('code'), tEl = $('timer'), progressEl = $('progress');
+    const validHelper = $('valid-helper'), qrStatus = $('qr-status');
+    const video = $('video'), canvas = $('canvas');
+    
+    $('show-secret').onchange = e => sEl.type = e.target.checked ? 'text' : 'password';
+    
+    let last, stream, scanning;
+    
     async function upd() {
-      const now = Date.now();
-      const ctr = BigInt(Math.floor(now / 3e4));
+      const now = Date.now(), ctr = BigInt(Math.floor(now / 3e4));
       const remain = 30 - Math.floor((now / 1e3) % 30);
-      const percent = Math.floor((remain / 30) * 100);
       tEl.textContent = `Next refresh in ${remain}s`;
-
-      if (!progressEl) {
-        progressEl = document.createElement("progress");
-        progressEl.max = 100;
-        progressEl.style.width = "100%";
-        tEl.insertAdjacentElement("afterend", progressEl);
-      }
-      progressEl.value = percent;
-
-      if (percent <= 0) {
-        progressEl.remove();
-        progressEl = null;
-      }
-
-      let s = sEl.value.trim();
-      if (!s) s = 'JBSWY3DPEHPK3PXP';
-      const bytes = base32(s);
-
+      progressEl.value = Math.floor((remain / 30) * 100);
+      
+      const s = sEl.value.trim() || 'JBSWY3DPEHPK3PXP';
       if (ctr !== last) {
-        cEl.value = await hotp(bytes, ctr);
+        cEl.value = await hotp(base32(s), ctr);
         last = ctr;
       }
     }
-
+    
     setInterval(upd, 1000);
     upd();
-
+    
     cEl.onclick = () => {
       navigator.clipboard.writeText(cEl.value).catch(() => {});
-      cEl.setAttribute('aria-describedby', 'valid-helper');
-      validHelper.hidden = false;
-      setTimeout(() => {
-        cEl.removeAttribute('aria-describedby');
-        validHelper.hidden = true;
-      }, 1000);
+      validHelper.style.display = 'block';
+      setTimeout(() => validHelper.style.display = 'none', 2000);
     };
-
+    
     sEl.oninput = () => { last = null; upd(); };
     sEl.onfocus = () => sEl.select();
     cEl.onfocus = () => cEl.select();
+    
+    function processQR(code) {
+      try {
+        const secret = new URL(code).searchParams.get('secret');
+        if (secret) {
+          sEl.value = secret;
+          qrStatus.innerHTML = '<mark>✓ Secret key extracted!</mark>';
+          last = null;
+          upd();
+          setTimeout(() => qrStatus.textContent = 'Press Ctrl+V to paste QR code', 3000);
+        } else qrStatus.innerHTML = '<mark>✗ Invalid QR code</mark>';
+      } catch {
+        qrStatus.innerHTML = '<mark>✗ Invalid QR code</mark>';
+      }
+    }
+    
+    function scanImage(img) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+      code ? processQR(code.data) : (qrStatus.innerHTML = '<mark>✗ No QR code found</mark>');
+    }
+    
+    $('qr-upload').onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      qrStatus.textContent = 'Processing...';
+      const img = new Image();
+      img.onload = () => { scanImage(img); e.target.value = ''; };
+      img.src = URL.createObjectURL(file);
+    };
+    
+    async function scanCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        video.style.display = 'block';
+        video.play();
+        scanning = true;
+        $('camera-btn').style.display = 'none';
+        $('stop-camera-btn').style.display = 'block';
+        qrStatus.textContent = 'Point camera at QR code...';
+        requestAnimationFrame(tick);
+      } catch {
+        qrStatus.innerHTML = '<mark>✗ Camera access denied</mark>';
+      }
+    }
+    
+    function tick() {
+      if (!scanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+        if (code) {
+          processQR(code.data);
+          stopCamera();
+          return;
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+    
+    function stopCamera() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      video.style.display = 'none';
+      scanning = false;
+      $('camera-btn').style.display = 'block';
+      $('stop-camera-btn').style.display = 'none';
+    }
+    
+    $('camera-btn').onclick = scanCamera;
+    $('stop-camera-btn').onclick = stopCamera;
+    
+    document.addEventListener('paste', e => {
+      for (const item of e.clipboardData?.items || []) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+          qrStatus.textContent = 'Processing pasted image...';
+          const img = new Image();
+          img.onload = () => scanImage(img);
+          img.src = URL.createObjectURL(file);
+          break;
+        }
+      }
+    });
   </script>
 </body>
 </html>
