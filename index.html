@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <style>
-    #qr-upload { display: none; }
+    #qr-upload, #qr-camera { display: none; }
     .grid-2 { grid-template-columns: 1fr 1fr; }
   </style>
 </head>
@@ -48,13 +48,13 @@
             <label for="qr-upload" role="button" class="secondary" style="margin-bottom:0;">
               📤 Upload QR
             </label>
-            <button id="camera-btn">📷 Camera</button>
+            <label for="qr-camera" role="button" style="margin-bottom:0;">
+              📷 Camera
+            </label>
           </div>
           <input id="qr-upload" type="file" accept="image/*">
+          <input id="qr-camera" type="file" accept="image/*" capture="environment">
           
-          <button id="stop-camera-btn" class="secondary" style="display:none;">⏹ Stop Camera</button>
-          
-          <video id="video" width="100%" style="display:none;" playsinline></video>
           <canvas id="canvas" hidden></canvas>
           <footer>
             <small id="qr-status" style="display:block;text-align:center;min-height:1.5rem;">Press Ctrl+V to paste QR code</small>
@@ -113,11 +113,11 @@
     const $ = id => document.getElementById(id);
     const sEl = $('secret'), cEl = $('code'), tEl = $('timer'), progressEl = $('progress');
     const validHelper = $('valid-helper'), qrStatus = $('qr-status');
-    const video = $('video'), canvas = $('canvas');
+    const canvas = $('canvas');
     
     $('show-secret').onchange = e => sEl.type = e.target.checked ? 'text' : 'password';
     
-    let last, stream, scanning;
+    let last;
     
     async function upd() {
       const now = Date.now(), ctr = BigInt(Math.floor(now / 3e4));
@@ -178,49 +178,14 @@
       img.src = URL.createObjectURL(file);
     };
     
-    async function scanCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        video.srcObject = stream;
-        video.style.display = 'block';
-        video.play();
-        scanning = true;
-        $('camera-btn').style.display = 'none';
-        $('stop-camera-btn').style.display = 'block';
-        qrStatus.textContent = 'Point camera at QR code...';
-        requestAnimationFrame(tick);
-      } catch {
-        qrStatus.innerHTML = '<mark>✗ Camera access denied</mark>';
-      }
-    }
-    
-    function tick() {
-      if (!scanning) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-        if (code) {
-          processQR(code.data);
-          stopCamera();
-          return;
-        }
-      }
-      requestAnimationFrame(tick);
-    }
-    
-    function stopCamera() {
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      video.style.display = 'none';
-      scanning = false;
-      $('camera-btn').style.display = 'block';
-      $('stop-camera-btn').style.display = 'none';
-    }
-    
-    $('camera-btn').onclick = scanCamera;
-    $('stop-camera-btn').onclick = stopCamera;
+    $('qr-camera').onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      qrStatus.textContent = 'Processing...';
+      const img = new Image();
+      img.onload = () => { scanImage(img); e.target.value = ''; };
+      img.src = URL.createObjectURL(file);
+    };
     
     document.addEventListener('paste', e => {
       for (const item of e.clipboardData?.items || []) {
