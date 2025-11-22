@@ -113,7 +113,6 @@
     const $ = id => document.getElementById(id);
     const sEl = $('secret'), cEl = $('code'), tEl = $('timer'), progressEl = $('progress');
     const validHelper = $('valid-helper'), qrStatus = $('qr-status');
-    const canvas = $('canvas');
     
     $('show-secret').onchange = e => sEl.type = e.target.checked ? 'text' : 'password';
     
@@ -183,23 +182,54 @@
       code ? processQR(code.data) : (qrStatus.innerHTML = '<mark>✗ No QR code found</mark>');
     }
     
-    $('qr-upload').onchange = e => {
-      const file = e.target.files[0];
+    function processFile(file, input) {
       if (!file) return;
       qrStatus.textContent = 'Processing...';
-      const img = new Image();
-      img.onload = () => { scanImage(img); e.target.value = ''; };
-      img.src = URL.createObjectURL(file);
-    };
+      
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const tempCanvas = document.createElement('canvas');
+          const maxSize = 300;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = (height / width) * maxSize;
+              width = maxSize;
+            } else {
+              width = (width / height) * maxSize;
+              height = maxSize;
+            }
+          }
+          
+          tempCanvas.width = width;
+          tempCanvas.height = height;
+          const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+          tempCtx.drawImage(img, 0, 0, width, height);
+          
+          const imageData = tempCtx.getImageData(0, 0, width, height);
+          const code = jsQR(imageData.data, width, height);
+          
+          if (code) {
+            processQR(code.data);
+          } else {
+            qrStatus.innerHTML = '<mark>✗ No QR code found</mark>';
+          }
+          
+          tempCanvas.width = 0;
+          tempCanvas.height = 0;
+          if (input) input.value = '';
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
     
-    $('qr-camera').onchange = e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      qrStatus.textContent = 'Processing...';
-      const img = new Image();
-      img.onload = () => { scanImage(img); e.target.value = ''; };
-      img.src = URL.createObjectURL(file);
-    };
+    $('qr-upload').onchange = e => processFile(e.target.files[0], e.target);
+    $('qr-camera').onchange = e => processFile(e.target.files[0], e.target);
     
     document.addEventListener('paste', e => {
       for (const item of e.clipboardData?.items || []) {
@@ -207,10 +237,7 @@
           e.preventDefault();
           const file = item.getAsFile();
           if (!file) continue;
-          qrStatus.textContent = 'Processing pasted image...';
-          const img = new Image();
-          img.onload = () => scanImage(img);
-          img.src = URL.createObjectURL(file);
+          processFile(file);
           break;
         }
       }
